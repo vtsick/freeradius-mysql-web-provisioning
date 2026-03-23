@@ -30,6 +30,8 @@ app.config['JSON_SORT_KEYS'] = False
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'N2JkZDA1ZDI1ZmYyZmM5YzFiMjk1ZmQ4')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
 
+APP_VERSION = "0.1.0"
+
 jwt = JWTManager(app)
 
 # GALERA-OPTIMIZED ENGINE CONFIGURATION
@@ -292,11 +294,21 @@ def check_token():
 #@jwt_required()
 def index():
     current_user = get_jwt_identity()
-    return success_response({"logged_in_as": current_user})
+    return success_response({
+        "logged_in_as": current_user,
+        "version": APP_VERSION,
+    })
 
 @app.route('/hello')
 def hello():
-    return success_response({"message": "Hello,Dude!"})
+    return success_response({
+        "message": "Hello,Dude!",
+        "version": APP_VERSION,
+    })
+
+@app.route('/version', methods=['GET'])
+def version():
+    return success_response({"version": APP_VERSION})
 
 @app.route('/select/<table_name>', methods=['GET'])
 #@jwt_required()
