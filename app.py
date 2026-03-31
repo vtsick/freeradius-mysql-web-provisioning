@@ -27,7 +27,7 @@ logger.addHandler(syslog_handler)
 # Configure mysql database URL for application
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
-app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'N2JkZDA1ZDI1ZmYyZmM5YzFiMjk1ZmQ4')
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'supersecretapikeychangeme')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
 
 APP_VERSION = "0.1.0"
