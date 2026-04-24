@@ -1,52 +1,58 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repository is currently a single-file Flask service:
+This repository is a compact Flask service centered on a single application file:
 
-- [`app.py`](/home/user/dev/flask-app/app.py): main application, route handlers, database access, auth helpers, and error handling.
-- `.venv/`: local virtual environment for development only. Do not commit it.
-- `__pycache__/`: Python bytecode cache. Treat as generated output.
+- `app.py`: Flask routes, DB access, auth helpers, versioning, and error handling.
+- `.venv/`: local virtual environment for development only; do not commit changes here.
+- `__pycache__/`: generated Python bytecode; ignore it.
+- `RESUME`: local workspace artifact, not part of the app.
 
-If the project grows, keep route handlers, database helpers, and auth logic in separate modules under an `app/` package instead of expanding `app.py` further.
+There is no `tests/` package yet. When tests are added, place them under `tests/` and keep application code out of ad hoc scripts.
 
 ## Build, Test, and Development Commands
-Use the local virtual environment when working in this repository.
+Use the local virtual environment in this repository.
 
-- `source .venv/bin/activate`: activate the local Python environment.
-- `.venv/bin/python -m py_compile app.py`: syntax check the application.
+- `source .venv/bin/activate`: activate the project environment.
 - `.venv/bin/python app.py`: run the Flask app locally.
-- `.venv/bin/python - <<'PY' ... PY`: use small inline scripts for route checks with Flask’s test client.
+- `.venv/bin/python -m py_compile app.py`: verify syntax before committing.
+- `.venv/bin/python - <<'PY' ... PY`: run focused route checks with Flask’s test client.
 
-If dependencies are missing, install them into `.venv`, not system Python.
+Example:
+```bash
+.venv/bin/python -m py_compile app.py
+```
 
 ## Coding Style & Naming Conventions
-Follow standard Python style:
+Follow standard Python conventions:
 
 - 4-space indentation, no tabs.
-- `snake_case` for functions, variables, and route helpers.
-- Keep route names explicit, for example `select_from_table` or `bulk_delete_from_csv`.
-- Prefer shared helpers for repeated behaviors such as validation and JSON error responses.
+- `snake_case` for functions, variables, and helper names.
+- Keep route handlers explicit and descriptive, for example `select_from_table`.
+- Prefer shared helpers for repeated validation, response formatting, and error handling.
 
-There is no formatter configured in this repository yet. Keep edits minimal, readable, and consistent with existing Flask patterns.
+No formatter or linter is configured yet, so keep edits small, readable, and internally consistent.
 
 ## Testing Guidelines
-There is no formal test suite yet. For now:
+There is no formal automated test suite yet. Minimum validation for changes:
 
-- Run `.venv/bin/python -m py_compile app.py` before submitting changes.
-- Use Flask’s `app.test_client()` for route-level checks.
-- Cover both success and failure paths, especially validation errors and database failures.
+- run `py_compile`
+- exercise changed routes with Flask’s test client
+- check both success and failure responses
 
-When adding tests later, place them under `tests/` and use names like `test_invalid_table_returns_400`.
+When adding tests, use names like `test_invalid_table_returns_400` and keep them under `tests/`.
 
 ## Commit & Pull Request Guidelines
-Git history is not available in this workspace, so no repository-specific commit convention could be derived. Use short, imperative commit messages such as `Unify API error responses`.
+Current Git history uses short, imperative commit messages, for example:
 
-For pull requests:
+- `Initialized repo`
+- `Initial app version 0.1.0`
 
-- describe the behavior change clearly
-- include sample request/response output for API changes
-- mention any environment or dependency changes
-- note manual test coverage and unresolved risks
+Follow the same style. Keep each commit focused on one behavior change. For pull requests, include:
+
+- a brief summary of the API or behavior change
+- manual test evidence or sample request/response output
+- any config, dependency, or migration notes
 
 ## Security & Configuration Tips
-Do not hardcode secrets or production database credentials in new changes. Prefer environment variables for JWT secrets, database URLs, and debug settings.
+Do not add secrets or production credentials in new changes. Prefer environment variables for DB URLs, JWT settings, and debug configuration.

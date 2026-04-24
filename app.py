@@ -36,7 +36,7 @@ jwt = JWTManager(app)
 
 # GALERA-OPTIMIZED ENGINE CONFIGURATION
 engine = create_engine(
-    'mysql://md:bibleblack@b2b-aaa/radius',
+    'mysql://user:password@freeradius.host.name/radius',
     pool_size=15,                    # Larger pool for high read traffic
     pool_recycle=300,                # Recycle connections every 5 minutes
     pool_pre_ping=True,              # CRITICAL: Test connections before use
