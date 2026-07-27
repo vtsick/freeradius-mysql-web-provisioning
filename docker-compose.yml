@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    network_mode: host
+    environment:
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-supersecretapikeychangeme}
+      - DB_URL=${DB_URL:-mysql+pymysql://md:bibleblack@b2b-aaa/radius}
+    volumes:
+      - ./nginx/app.conf:/etc/nginx/conf.d/app.conf:ro
+      - ./user_credentials.db:/app/user_credentials.db
+      - /dev/log:/dev/log
+    restart: unless-stopped

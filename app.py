@@ -36,7 +36,7 @@ jwt = JWTManager(app)
 
 # GALERA-OPTIMIZED ENGINE CONFIGURATION
 engine = create_engine(
-    'mysql://user:password@freeradius.host.name/radius',
+    os.environ.get('DB_URL', 'mysql+pymysql://md:bibleblack@b2b-aaa/radius'),
     pool_size=15,                    # Larger pool for high read traffic
     pool_recycle=300,                # Recycle connections every 5 minutes
     pool_pre_ping=True,              # CRITICAL: Test connections before use
@@ -730,40 +730,35 @@ def bulk_delete_from_csv(table_name):
 
         logger.info(f"Number of records to delete: {len(delete_criteria)}")
 
-        # Process deletes in batches
-        BATCH_SIZE = 50
+        # Process deletes in individual transactions (tiny per-statement
+        # commits to avoid long Galera certification stalls)
+        LOG_INTERVAL = 50
         total_deleted = 0
-        batches_completed = 0
+        records_processed = 0
 
         DynamicTable = create_table_class(table_name)
 
-        for batch_start in range(0, len(delete_criteria), BATCH_SIZE):
-            batch_end = min(batch_start + BATCH_SIZE, len(delete_criteria))
-            batch = delete_criteria[batch_start:batch_end]
-
+        for criteria in delete_criteria:
             session = Session()
             try:
-                for criteria in batch:
-                    query = session.query(DynamicTable)
+                query = session.query(DynamicTable)
 
-                    for key, value in criteria.items():
-                        if hasattr(DynamicTable, key):
-                            query = query.filter(getattr(DynamicTable, key) == value)
+                for key, value in criteria.items():
+                    if hasattr(DynamicTable, key):
+                        query = query.filter(getattr(DynamicTable, key) == value)
 
-                    affected_rows = query.delete(synchronize_session=False)
-                    total_deleted += affected_rows
+                affected_rows = query.delete(synchronize_session=False)
+                total_deleted += affected_rows
 
                 session.commit()
-                batches_completed += 1
-                
-                logger.info(
-                    f"Delete batch {batches_completed} completed: "
-                    f"{total_deleted} total rows deleted"
-                )
 
-                # Brief pause between batches
-                if batch_end < len(delete_criteria):
-                    time.sleep(0.01)
+                records_processed += 1
+
+                if records_processed % LOG_INTERVAL == 0:
+                    logger.info(
+                        f"Deleted {records_processed}/{len(delete_criteria)} records: "
+                        f"{total_deleted} rows deleted so far"
+                    )
 
             except Exception as e:
                 session.rollback()
@@ -771,13 +766,12 @@ def bulk_delete_from_csv(table_name):
             finally:
                 session.close()
 
-        logger.info(f"Bulk delete completed: {total_deleted} rows in {batches_completed} batches")
+        logger.info(f"Bulk delete completed: {total_deleted} rows across {records_processed} records")
 
         return success_response({
             "message": "Bulk delete operation successful",
             "rows_deleted": total_deleted,
-            "records_processed": len(delete_criteria),
-            "batches": batches_completed
+            "records_processed": records_processed
         })
 
     except csv.Error as e:

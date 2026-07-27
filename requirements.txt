@@ -1,0 +1,5 @@
+flask
+sqlalchemy
+flask-jwt-extended
+pymysql
+gunicorn
