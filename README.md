@@ -265,6 +265,41 @@ source .venv/bin/activate
 .venv/bin/python app.py
 ```
 
+## Running with Docker
+
+Build and start a containerized version (Nginx on host port 8000, Gunicorn on loopback 5000):
+
+```bash
+docker compose build --no-cache && docker compose up -d
+```
+
+The compose file uses host networking and expects a MariaDB/Galera instance reachable via the `DB_URL` default in [`docker-compose.yml`](./docker-compose.yml). Override environment variables on the host or in the file:
+
+```bash
+export DB_URL='mysql+pymysql://user:pass@host/radius'
+export JWT_SECRET_KEY='your-secret-here'
+docker compose up -d
+```
+
+The following files are mounted from the host:
+
+| Host path | Container path | Purpose |
+|---|---|---|
+| `./nginx/app.conf` | `/etc/nginx/conf.d/app.conf` | Nginx site config (port 8000) |
+| `./user_credentials.db` | `/app/user_credentials.db` | Local SQLite auth DB |
+
+View logs:
+
+```bash
+docker compose logs -f
+```
+
+Stop the container:
+
+```bash
+docker compose down
+```
+
 ## Notes
 
 - Success responses use `{"success": true, ...}`.
