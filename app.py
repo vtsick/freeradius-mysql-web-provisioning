@@ -30,7 +30,7 @@ app.config['JSON_SORT_KEYS'] = False
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'supersecretapikeychangeme')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 
 jwt = JWTManager(app)
 
