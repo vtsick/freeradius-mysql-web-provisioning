@@ -6,6 +6,7 @@ __pycache__/
 AGENTS.md
 RESUME
 docs/
-nginx/
+.env
+user_credentials.db
 docker-compose.yml
 Dockerfile
