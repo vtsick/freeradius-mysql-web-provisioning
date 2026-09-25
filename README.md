@@ -48,6 +48,34 @@ Allowed MariaDB tables:
 - `GET /`
 - `GET /hello`
 - `GET /version`
+- `GET /chkcluster`
+
+### Galera Health
+
+`GET /chkcluster` reads Galera global variables and status through the configured
+`DB_URL`. It returns HTTP 200 when replication is enabled and the connected node
+is Primary, connected, ready, and Synced (state 4), with a positive cluster size.
+HTTP 503 indicates an unhealthy node, disabled/unavailable Galera, or a database
+query failure. No database changes are made.
+
+```bash
+curl http://127.0.0.1:5000/chkcluster
+```
+
+A healthy response includes `success: true`, `healthy: true`, `galera_enabled`,
+`cluster_size`, `scope: "connected_node"`, selected raw `wsrep_*` values in
+`status`, and an empty `reasons` list. Unhealthy responses use the standard error
+envelope with health information and reasons under `details`. Database failures
+return a generic error without connection credentials.
+
+This checks the connected node's view, including its reported cluster size; it
+does not contact every member or enforce an expected number of nodes. A smaller
+Primary component can still pass. Behind a proxy, the check reflects whichever
+backend serves the connection. Like the table routes, authentication is disabled
+by default; enable its `@jwt_required()` decorator when needed.
+
+The status checks follow the
+[MariaDB Galera monitoring guidance](https://mariadb.com/docs/galera-cluster/high-availability/monitoring-mariadb-galera-cluster).
 
 ### Table Operations
 

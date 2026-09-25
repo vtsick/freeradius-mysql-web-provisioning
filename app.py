@@ -310,6 +310,74 @@ def hello():
 def version():
     return success_response({"version": APP_VERSION})
 
+@app.route('/chkcluster', methods=['GET'])
+#@jwt_required()
+def check_cluster():
+    status_names = (
+        'wsrep_cluster_status', 'wsrep_cluster_size', 'wsrep_cluster_state_uuid',
+        'wsrep_connected', 'wsrep_ready', 'wsrep_local_state',
+        'wsrep_local_state_comment', 'wsrep_local_state_uuid',
+    )
+    try:
+        with engine.connect() as connection:
+            variables = dict(connection.execute(text(
+                "SHOW GLOBAL VARIABLES WHERE Variable_name IN "
+                "('wsrep_on', 'wsrep_provider')"
+            )).fetchall())
+            # Use an allowlist so diagnostics do not expose cluster addresses.
+            status = dict(connection.execute(text(
+                "SHOW GLOBAL STATUS WHERE Variable_name IN (" +
+                ", ".join(f"'{name}'" for name in status_names) + ")"
+            )).fetchall())
+    except SQLAlchemyError:
+        logger.exception("Unable to check Galera cluster status")
+        raise ApiError(
+            "Unable to query Galera cluster status",
+            status_code=503,
+            error_type="Database Error",
+            details={"healthy": False},
+        )
+
+    enabled = (
+        variables.get('wsrep_on', '').upper() == 'ON' and
+        variables.get('wsrep_provider', '').lower() not in ('', 'none')
+    )
+    reasons = []
+    if not enabled:
+        reasons.append("Galera replication is disabled or unavailable")
+    for name, expected in (
+        ('wsrep_cluster_status', 'Primary'),
+        ('wsrep_connected', 'ON'),
+        ('wsrep_ready', 'ON'),
+        ('wsrep_local_state', '4'),
+    ):
+        if status.get(name) != expected:
+            reasons.append(f"{name} must be {expected}")
+    try:
+        cluster_size = int(status.get('wsrep_cluster_size', ''))
+    except (ValueError, TypeError):
+        cluster_size = None
+    if cluster_size is None or cluster_size < 1:
+        reasons.append("Cluster size is unavailable or zero")
+
+    healthy = not reasons
+    payload = {
+        "healthy": healthy,
+        "galera_enabled": enabled,
+        "cluster_size": cluster_size,
+        "scope": "connected_node",
+        "status": status,
+        "reasons": reasons,
+    }
+    if not healthy:
+        raise ApiError(
+            "Galera cluster health check failed",
+            status_code=503,
+            error_type="Cluster Health Error",
+            details=payload,
+        )
+    return success_response(payload)
+
 @app.route('/select/<table_name>', methods=['GET'])
 #@jwt_required()
 @galera_retry(max_retries=3)
