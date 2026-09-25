@@ -15,6 +15,8 @@ import sqlite3
 import csv, io
 import time
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from cluster_config import load_cluster_config, selected_node, node_url
 
 # Configure logging to write to syslog
 logger = logging.getLogger(__name__)
@@ -35,7 +37,10 @@ APP_VERSION = "0.1.1"
 jwt = JWTManager(app)
 
 # GALERA-OPTIMIZED ENGINE CONFIGURATION
+cluster_config = load_cluster_config()
+provisioning_node = selected_node(cluster_config) if cluster_config else None
 engine = create_engine(
+    node_url(provisioning_node) if provisioning_node else
     os.environ.get('DB_URL', 'mysql+pymysql://md:bibleblack@b2b-aaa/radius'),
     pool_size=15,                    # Larger pool for high read traffic
     pool_recycle=300,                # Recycle connections every 5 minutes
@@ -48,6 +53,15 @@ engine = create_engine(
         'local_infile': True          # Enable LOAD DATA LOCAL INFILE
     }
 )
+
+cluster_engines = {
+    node['name']: create_engine(
+        node_url(node), pool_size=1, max_overflow=0, pool_timeout=3,
+        pool_recycle=300, isolation_level='AUTOCOMMIT',
+        connect_args={'connect_timeout': 3, 'read_timeout': 3, 'write_timeout': 3},
+    )
+    for node in cluster_config['nodes']
+} if cluster_config else {}
 
 # Use scoped session for thread safety
 session_factory = sessionmaker(bind=engine)
@@ -310,16 +324,14 @@ def hello():
 def version():
     return success_response({"version": APP_VERSION})
 
-@app.route('/chkcluster', methods=['GET'])
-#@jwt_required()
-def check_cluster():
+def read_cluster_node(node_engine):
     status_names = (
         'wsrep_cluster_status', 'wsrep_cluster_size', 'wsrep_cluster_state_uuid',
         'wsrep_connected', 'wsrep_ready', 'wsrep_local_state',
         'wsrep_local_state_comment', 'wsrep_local_state_uuid',
     )
     try:
-        with engine.connect() as connection:
+        with node_engine.connect() as connection:
             variables = dict(connection.execute(text(
                 "SHOW GLOBAL VARIABLES WHERE Variable_name IN "
                 "('wsrep_on', 'wsrep_provider')"
@@ -330,7 +342,6 @@ def check_cluster():
                 ", ".join(f"'{name}'" for name in status_names) + ")"
             )).fetchall())
     except SQLAlchemyError:
-        logger.exception("Unable to check Galera cluster status")
         raise ApiError(
             "Unable to query Galera cluster status",
             status_code=503,
@@ -369,7 +380,58 @@ def check_cluster():
         "status": status,
         "reasons": reasons,
     }
-    if not healthy:
+    return payload
+
+
+@app.route('/chkcluster', methods=['GET'])
+#@jwt_required()
+def check_cluster():
+    if cluster_config:
+        def check_member(name):
+            try:
+                result = read_cluster_node(cluster_engines[name])
+                result['status_available'] = True
+            except ApiError:
+                result = {
+                    'healthy': False, 'status': {}, 'cluster_size': None,
+                    'galera_enabled': None, 'status_available': False,
+                    'reasons': ['Unable to query Galera cluster status'],
+                }
+            result.pop('scope', None)
+            result['name'] = name
+            status = result['status']
+            cluster_uuid = status.get('wsrep_cluster_state_uuid')
+            if not cluster_uuid or status.get('wsrep_local_state_uuid') != cluster_uuid:
+                result['reasons'].append('Local and cluster state UUIDs are missing or differ')
+            expected = cluster_config.get('expected_cluster_size')
+            if expected is not None and result['cluster_size'] != expected:
+                result['reasons'].append(f'Expected cluster size {expected}')
+            result['healthy'] = not result['reasons']
+            return result
+
+        with ThreadPoolExecutor(max_workers=len(cluster_engines)) as executor:
+            members = list(executor.map(check_member, cluster_engines))
+        reasons = []
+        if any(not member['healthy'] for member in members):
+            reasons.append('One or more configured members are unhealthy or unavailable')
+        uuids = {member['status'].get('wsrep_cluster_state_uuid') for member in members}
+        sizes = {member['cluster_size'] for member in members}
+        if len(uuids) > 1:
+            reasons.append('Members report different cluster state UUIDs')
+        if len(sizes) > 1:
+            reasons.append('Members report different cluster sizes')
+        if any(member['cluster_size'] is not None and
+               member['cluster_size'] < len(members) for member in members):
+            reasons.append('Reported cluster size is smaller than the configured membership')
+        payload = {
+            'healthy': not reasons, 'scope': 'configured_nodes',
+            'provisioning_node': provisioning_node['name'],
+            'expected_cluster_size': cluster_config.get('expected_cluster_size'),
+            'members': members, 'reasons': reasons,
+        }
+    else:
+        payload = read_cluster_node(engine)
+    if not payload['healthy']:
         raise ApiError(
             "Galera cluster health check failed",
             status_code=503,

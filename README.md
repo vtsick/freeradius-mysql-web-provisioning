@@ -1,6 +1,6 @@
 # FreeRADIUS Provisioning API
 
-This repository contains a single-file Flask application, [`app.py`](./app.py), used to provision and manage MariaDB tables commonly used by FreeRADIUS. It exposes JSON and CSV endpoints for CRUD-style operations, bulk import/export, authentication, and version reporting.
+This repository contains a Flask application, [`app.py`](./app.py), used to provision and manage MariaDB tables commonly used by FreeRADIUS. It exposes JSON and CSV endpoints for CRUD operations, bulk import/export, authentication, and Galera cluster monitoring. [`cluster_config.py`](./cluster_config.py) loads shared node configuration; [`container_start.py`](./container_start.py) configures the container listeners.
 
 ## What the Script Does
 
@@ -52,27 +52,35 @@ Allowed MariaDB tables:
 
 ### Galera Health
 
-`GET /chkcluster` reads Galera global variables and status through the configured
-`DB_URL`. It returns HTTP 200 when replication is enabled and the connected node
-is Primary, connected, ready, and Synced (state 4), with a positive cluster size.
-HTTP 503 indicates an unhealthy node, disabled/unavailable Galera, or a database
-query failure. No database changes are made.
+`GET /chkcluster` checks every database node in [`cluster.json`](./cluster.json)
+when `CLUSTER_CONFIG` is set. Each node must have Galera enabled, be Primary,
+connected, ready, and Synced (state 4). Local and cluster state UUIDs must match,
+and all nodes must report the same cluster UUID and size. The reported size must
+include at least all configured nodes. Set `expected_cluster_size` to enforce an
+exact size, including any arbiters; the supplied `null` leaves that check disabled.
+No database changes are made.
 
 ```bash
 curl http://127.0.0.1:5000/chkcluster
 ```
 
-A healthy response includes `success: true`, `healthy: true`, `galera_enabled`,
-`cluster_size`, `scope: "connected_node"`, selected raw `wsrep_*` values in
-`status`, and an empty `reasons` list. Unhealthy responses use the standard error
-envelope with health information and reasons under `details`. Database failures
-return a generic error without connection credentials.
+A healthy response (HTTP 200) contains `healthy`, `scope: "configured_nodes"`,
+`provisioning_node`, `expected_cluster_size`, `members`, and `reasons`.
+Each member includes its configured `name`, `healthy`, `status_available`, `cluster_size`, raw
+allowlisted `status`, and `reasons`. HTTP 503 uses the standard error envelope
+with the entire aggregate under `details`, including results from available nodes
+when another node fails. Connection URLs and credentials are never returned.
 
-This checks the connected node's view, including its reported cluster size; it
-does not contact every member or enforce an expected number of nodes. A smaller
-Primary component can still pass. Behind a proxy, the check reflects whichever
-backend serves the connection. Like the table routes, authentication is disabled
-by default; enable its `@jwt_required()` decorator when needed.
+Checks run concurrently through small reusable pools with 3-second pool,
+connection, read, and write timeouts. These are per-operation limits, not an
+overall deadline; DNS resolution can take longer. Results are samples taken
+at slightly different times, so membership transitions can produce a temporary
+503. An arbiter has no SQL interface: exclude it from `nodes` and include it only
+in `expected_cluster_size` if you want an indirect membership check.
+
+Without `CLUSTER_CONFIG`, the original `DB_URL` single-node behavior remains,
+with `scope: "connected_node"`. Like the table routes, authentication is disabled
+by default; enable `@jwt_required()` when needed.
 
 The status checks follow the
 [MariaDB Galera monitoring guidance](https://mariadb.com/docs/galera-cluster/high-availability/monitoring-mariadb-galera-cluster).
@@ -295,26 +303,68 @@ source .venv/bin/activate
 
 ## Running with Docker
 
-Build and start a containerized version (Nginx on host port 8000, Gunicorn on loopback 5000):
+The supplied Compose deployment runs four containers on one Linux host using
+host networking. Each targets a different MariaDB member for provisioning, while
+`/chkcluster` on every HTTP port checks all four members:
+
+| Compose service | Provisioning host / SQL port | Gunicorn (loopback) | External HTTP |
+|---|---|---|---|
+| `app` | `fr-1:3306` | 5000 | 8000 |
+| `app-fr-2` | `fr-2:3306` | 5001 | 8001 |
+| `app-fr-3` | `fr-3:3306` | 5002 | 8002 |
+| `app-fr-4` | `fr-4:3306` | 5003 | 8003 |
+
+Edit `cluster.json` for actual SQL ports and database names. These hostnames must
+resolve and be reachable from the Docker host; the configuration does not create
+DNS records or open firewall rules. All four entries are assumed to be MariaDB
+servers, not arbiters. Galera replicates writes made through any provisioning port.
+
+Create a local credentials file before building:
 
 ```bash
-docker compose build --no-cache && docker compose up -d
+cp .env.example .env
+chmod 600 .env
 ```
 
-The compose file uses host networking and expects a MariaDB/Galera instance reachable via the `DB_URL` default in [`docker-compose.yml`](./docker-compose.yml). Override environment variables on the host or in the file:
+Set `DB_USER`, `DB_PASSWORD`, and `JWT_SECRET_KEY` in `.env` (ignored by Git).
+Passwords are plain values, not URL-encoded. Single-quote values containing `$`
+to avoid Compose interpolation. The account must be usable on each target host
+for provisioning and `SHOW GLOBAL STATUS` / `SHOW GLOBAL VARIABLES`.
+For different credentials per node, add `user_env` and `password_env` keys to
+that node, naming variables supplied in `.env`.
+
+Build the shared image once and start all four services:
 
 ```bash
-export DB_URL='mysql+pymysql://user:pass@host/radius'
-export JWT_SECRET_KEY='your-secret-here'
-docker compose up -d
+touch user_credentials.db
+docker compose build app
+docker compose up -d --no-build --force-recreate
+curl http://localhost:8000/chkcluster
+curl 'http://localhost:8001/select/radgroupcheck?limit=1'
 ```
 
-The following files are mounted from the host:
+`PROVISIONING_NODE` selects the node per service. With `CLUSTER_CONFIG` enabled,
+the selected node determines the provisioning connection; `DB_URL` is ignored.
+Use `docker compose up -d --no-build app app-fr-2` to run only two entry points;
+both still check every node in `cluster.json`. For a two-node cluster, also remove
+the unused node entries and Compose services. Run no container for an arbiter.
+
+Mounted files:
 
 | Host path | Container path | Purpose |
 |---|---|---|
-| `./nginx/app.conf` | `/etc/nginx/conf.d/app.conf` | Nginx site config (port 8000) |
+| `./cluster.json` | `/app/cluster.json` | All nodes, SQL ports, and listener ports |
+| `./nginx/app.conf` | `/etc/nginx/templates/app.conf.template` | Nginx template rendered on startup |
 | `./user_credentials.db` | `/app/user_credentials.db` | Local SQLite auth DB |
+| `/dev/log` | `/dev/log` | Host syslog socket |
+
+After pulling Python or startup code changes, repeat the build and recreate
+commands above. A restart alone does not update code copied into the image.
+After editing `cluster.json` or the Nginx template, run `docker compose restart`
+to reload application configuration and render the listener ports. After changing
+`.env`, recreate the containers with `docker compose up -d --no-build --force-recreate`.
+The Nginx template is not a directly loadable Nginx config; do not mount it over
+`/etc/nginx/conf.d/app.conf`. See [deployment details](docs/nginx-deployment.md).
 
 View logs:
 

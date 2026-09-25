@@ -3,6 +3,4 @@ set -e
 
 rm -f /etc/nginx/sites-enabled/default
 
-nginx
-
-exec gunicorn "$@"
+exec python /app/container_start.py "$@"

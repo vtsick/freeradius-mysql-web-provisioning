@@ -1,0 +1,9 @@
+{
+  "expected_cluster_size": null,
+  "nodes": [
+    {"name": "fr-1", "host": "fr-1", "sql_port": 3306, "database": "radius", "gunicorn_port": 5000, "http_port": 8000},
+    {"name": "fr-2", "host": "fr-2", "sql_port": 3306, "database": "radius", "gunicorn_port": 5001, "http_port": 8001},
+    {"name": "fr-3", "host": "fr-3", "sql_port": 3306, "database": "radius", "gunicorn_port": 5002, "http_port": 8002},
+    {"name": "fr-4", "host": "fr-4", "sql_port": 3306, "database": "radius", "gunicorn_port": 5003, "http_port": 8003}
+  ]
+}

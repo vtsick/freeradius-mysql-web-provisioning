@@ -1,12 +1,33 @@
+x-app: &app
+  build: .
+  image: freeradius-provisioning:local
+  network_mode: host
+  env_file: .env
+  volumes:
+    - ./cluster.json:/app/cluster.json:ro
+    - ./nginx/app.conf:/etc/nginx/templates/app.conf.template:ro
+    - ./user_credentials.db:/app/user_credentials.db
+    - /dev/log:/dev/log
+  restart: unless-stopped
+
 services:
   app:
-    build: .
-    network_mode: host
+    <<: *app
     environment:
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-supersecretapikeychangeme}
-      - DB_URL=${DB_URL:-mysql+pymysql://user:password@servername/radius}
-    volumes:
-      - ./nginx/app.conf:/etc/nginx/conf.d/app.conf:ro
-      - ./user_credentials.db:/app/user_credentials.db
-      - /dev/log:/dev/log
-    restart: unless-stopped
+      CLUSTER_CONFIG: /app/cluster.json
+      PROVISIONING_NODE: fr-1
+  app-fr-2:
+    <<: *app
+    environment:
+      CLUSTER_CONFIG: /app/cluster.json
+      PROVISIONING_NODE: fr-2
+  app-fr-3:
+    <<: *app
+    environment:
+      CLUSTER_CONFIG: /app/cluster.json
+      PROVISIONING_NODE: fr-3
+  app-fr-4:
+    <<: *app
+    environment:
+      CLUSTER_CONFIG: /app/cluster.json
+      PROVISIONING_NODE: fr-4

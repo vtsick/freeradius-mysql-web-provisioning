@@ -9,14 +9,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py .
+COPY app.py cluster_config.py container_start.py ./
+COPY nginx/app.conf /etc/nginx/templates/app.conf.template
 COPY entrypoint.sh /entrypoint.sh
 
 EXPOSE 8000 5000
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["--workers", "9", \
-     "--bind", "127.0.0.1:5000", \
      "--timeout", "600", \
      "--max-requests", "10000", \
      "--max-requests-jitter", "1000", \
