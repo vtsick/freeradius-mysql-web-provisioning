@@ -1,6 +1,9 @@
 x-app: &app
   build:
     context: .
+    network: host
+    entitlements:
+      - network.host
     args:
       BASE_IMAGE: ${BASE_IMAGE:-python:3.11-slim}
   image: freeradius-provisioning:local

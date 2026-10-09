@@ -320,7 +320,9 @@ for host considerations.
 
 Compose reads `BASE_IMAGE` from `.env` for every build. To use the RED OS 8
 Python image, set `BASE_IMAGE=registry.red-soft.ru/ubi8/python-311:3.11` in
-`.env`, then run `docker compose build app`. Compose does not pull the locally
+`.env`, then run `docker compose build app`. Build steps use host networking,
+including the `network.host` BuildKit entitlement, so package installation uses
+the host's network and DNS path. Compose does not pull the locally
 built `freeradius-provisioning:local` service image from a registry; it must be
 built locally before `docker compose up -d --no-build`.
 

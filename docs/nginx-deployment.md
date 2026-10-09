@@ -73,7 +73,10 @@ the base image. For a different image distribution, use
 For example, RED OS 8 publishes
 `registry.red-soft.ru/ubi8/python-311:3.11`. An explicit
 `docker compose build --build-arg BASE_IMAGE=<python-base-image> app` also works
-for one build. Compose uses `pull_policy: never` for the local application image,
+for one build. Compose sets `build.network: host` and grants the `network.host`
+BuildKit entitlement for Dockerfile `RUN` commands. This lets package managers
+use the host's working DNS path; it is separate from runtime `network_mode: host`.
+The builder must permit that entitlement. Compose uses `pull_policy: never` for the local application image,
 so build it before starting services with `--no-build`.
 The installer detects apt, apk, dnf, microdnf, or yum and fails explicitly when
 none is present. The chosen base must already supply `python` (3.11 or newer)
