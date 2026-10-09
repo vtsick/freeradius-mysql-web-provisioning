@@ -318,6 +318,12 @@ runtime validation. A shared Nginx main configuration avoids distribution-specif
 default sites and include paths. See [deployment details](docs/nginx-deployment.md)
 for host considerations.
 
+Compose reads `BASE_IMAGE` from `.env` for every build. To use the RED OS 8
+Python image, set `BASE_IMAGE=registry.red-soft.ru/ubi8/python-311:3.11` in
+`.env`, then run `docker compose build app`. Compose does not pull the locally
+built `freeradius-provisioning:local` service image from a registry; it must be
+built locally before `docker compose up -d --no-build`.
+
 The supplied Compose deployment runs four containers on one Linux host using
 host networking. Each targets a different MariaDB member for provisioning, while
 `/chkcluster` on every HTTP port checks all four members:

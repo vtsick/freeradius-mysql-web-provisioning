@@ -69,7 +69,12 @@ The startup script owns `--bind`; set listening ports only in `cluster.json`.
 The default `python:3.11-slim` image can run on Red Hat-like hosts: its `apt-get`
 command runs inside the image. Changing the host OS does not require changing
 the base image. For a different image distribution, use
-`docker compose build --build-arg BASE_IMAGE=<python-base-image> app`.
+`BASE_IMAGE=<python-base-image>` in `.env`, followed by `docker compose build app`.
+For example, RED OS 8 publishes
+`registry.red-soft.ru/ubi8/python-311:3.11`. An explicit
+`docker compose build --build-arg BASE_IMAGE=<python-base-image> app` also works
+for one build. Compose uses `pull_policy: never` for the local application image,
+so build it before starting services with `--no-build`.
 The installer detects apt, apk, dnf, microdnf, or yum and fails explicitly when
 none is present. The chosen base must already supply `python` (3.11 or newer)
 and pip, plus a repository containing Nginx; not every minimal or UBI image does.
