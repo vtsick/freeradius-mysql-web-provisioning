@@ -401,6 +401,51 @@ Stop the container:
 docker compose down
 ```
 
+## Export for an Offline Host
+
+The built image contains the application code and dependencies. Compose also
+needs the deployment files mounted from the host: `cluster.json`, `nginx/app.conf`,
+`.env`, and `user_credentials.db`. Export the image and those files together.
+Run these commands in the deployment directory on the source host:
+
+```bash
+docker compose stop
+umask 077
+docker image save -o freeradius-provisioning.tar freeradius-provisioning:local
+tar -czf freeradius-deployment.tar.gz \
+  freeradius-provisioning.tar \
+  docker-compose.yml cluster.json nginx/app.conf \
+  .env user_credentials.db
+docker compose start
+```
+
+Stopping the services keeps the SQLite database consistent during the archive.
+The source services can be started again after the archive is complete. Transfer
+`freeradius-deployment.tar.gz` to the offline host using an approved secure method;
+it contains database credentials and authentication data.
+
+On the destination host, extract the archive into a new deployment directory:
+
+```bash
+mkdir -p ~/freeradius-provisioning
+cd ~/freeradius-provisioning
+tar -xzf /path/to/freeradius-deployment.tar.gz
+docker image load -i freeradius-provisioning.tar
+docker compose up -d --no-build --pull never
+docker compose ps
+curl -i http://localhost:8000/hello
+```
+
+The destination needs Docker Compose, a compatible CPU architecture, working
+resolution and network access to the configured MariaDB hosts, and available
+HTTP ports. The Compose file mounts the destination host's `/dev/log`; ensure it
+exists and is accessible. `--no-build --pull never` uses the imported local image
+without contacting a registry. If the destination should run fewer services,
+adjust `docker-compose.yml` and `cluster.json` before starting it. This process
+does not transfer running processes or any changes made only inside a container's
+writable layer; this application keeps its persistent user database in the
+included bind-mounted file.
+
 ## Notes
 
 - Success responses use `{"success": true, ...}`.
