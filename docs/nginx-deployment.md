@@ -50,8 +50,10 @@ for compatibility with previous deployments. To use fewer entry points, start
 only the selected services, or remove unused services from Compose. If a node is
 removed from the cluster configuration, also remove its provisioning service.
 
-`entrypoint.sh` removes the distribution's default Nginx site and invokes
-`container_start.py`. The startup script reads the selected node, replaces only
+`entrypoint.sh` invokes `container_start.py`. The image installs a shared
+`nginx/nginx.conf` that loads only the generated app site, avoiding differences
+in default sites and include paths between distributions.
+The startup script reads the selected node, replaces only
 `${GUNICORN_PORT}` and `${HTTP_PORT}` in the Nginx template, validates it using
 `nginx -t`, starts Nginx, and executes Gunicorn with the same configured bind port.
 Nginx variables such as `$host` and `$remote_addr` remain intact.
@@ -63,6 +65,23 @@ Compose `command` to a Gunicorn argument list to tune workers, retaining `app:ap
 The startup script owns `--bind`; set listening ports only in `cluster.json`.
 
 ## Updating
+
+The default `python:3.11-slim` image can run on Red Hat-like hosts: its `apt-get`
+command runs inside the image. Changing the host OS does not require changing
+the base image. For a different image distribution, use
+`docker compose build --build-arg BASE_IMAGE=<python-base-image> app`.
+The installer detects apt, apk, dnf, microdnf, or yum and fails explicitly when
+none is present. The chosen base must already supply `python` (3.11 or newer)
+and pip, plus a repository containing Nginx; not every minimal or UBI image does.
+Installation and the current container entrypoint run as root.
+
+On SELinux-enforcing hosts, bind mounts may require appropriate labels. The
+cluster JSON, Nginx template, and credentials database are shared between four
+containers, so use shared `:z` labeling if required (for read-only mounts, `:ro,z`).
+Do not relabel the system `/dev/log` socket; access to it depends on host policy.
+The host firewall must also allow the intended external HTTP ports. These are
+host deployment settings, separate from image package installation.
+See Docker's [SELinux bind-mount documentation](https://docs.docker.com/engine/storage/bind-mounts/#configure-the-selinux-label).
 
 Python code, dependencies, and startup scripts are copied into the image. After
 pulling code changes, rebuild and recreate using the commands above. A failed

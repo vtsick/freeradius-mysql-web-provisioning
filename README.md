@@ -303,6 +303,21 @@ source .venv/bin/activate
 
 ## Running with Docker
 
+The default Debian-based Python image also runs on Red Hat-like Linux hosts;
+package installation happens inside the image, independently of the host OS.
+For an alternative base, the Dockerfile detects `apt-get`, `apk`, `dnf`,
+`microdnf`, or `yum`. The base must provide Python 3.11+ as `python`, pip, and
+repositories containing Nginx. A bare OS image is not sufficient.
+
+```bash
+docker compose build --build-arg BASE_IMAGE=python:3.11-alpine app
+```
+
+The default remains `python:3.11-slim`. Custom bases require their own build and
+runtime validation. A shared Nginx main configuration avoids distribution-specific
+default sites and include paths. See [deployment details](docs/nginx-deployment.md)
+for host considerations.
+
 The supplied Compose deployment runs four containers on one Linux host using
 host networking. Each targets a different MariaDB member for provisioning, while
 `/chkcluster` on every HTTP port checks all four members:
